@@ -16,17 +16,47 @@ export interface Achievement {
   condition: (stats: AppState) => boolean;
 }
 
+export interface ShopItem {
+  id: string;
+  type: 'multiplier' | 'autotap' | 'theme' | 'instant';
+  name: string;
+  description: string;
+  price: number;
+  value: number; // Multiplier value or auto-tap rate
+  duration?: number; // In seconds (for temporary items)
+  icon: string;
+}
+
+export interface Quest {
+  id: string;
+  description: string;
+  target: number;
+  current: number;
+  reward: number;
+  completed: boolean;
+  type: 'tap_count' | 'buy_item' | 'streak';
+}
+
+export interface ActiveEffect {
+  id: string; // 'multiplier' or 'autotap'
+  value: number;
+  expiresAt: number; // Timestamp
+}
+
 export interface UserProfile {
   name: string;
-  avatar: string; // Emoji or URL
-  startDate: string; // ISO Date of first use
+  avatar: string;
+  startDate: string;
+  level: number;
+  xp: number;
+  maxXp: number;
 }
 
 export interface Settings {
   soundEnabled: boolean;
   hapticEnabled: boolean;
   theme: ThemeType;
-  customGoal: number | null; // If null, use auto algorithm
+  customGoal: number | null;
   funMode: boolean;
 }
 
@@ -36,9 +66,14 @@ export interface AppState {
   history: DailyStats[];
   streak: number;
   totalCount: number;
+  balance: number; // Spendable Resmigül Points
   user: UserProfile;
   settings: Settings;
   achievements: Achievement[];
+  activeEffects: ActiveEffect[];
+  quests: Quest[];
+  lastDailyReward: string | null;
+  dailyRewardStreak: number;
 }
 
 export const THEMES = {
