@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Home, BarChart2, Settings, User, Trophy, Zap, Volume2, VolumeX, Vibrate, Download, Upload, Palette, TrendingUp, CheckCircle, Calendar } from './components/Icons';
 import ConfettiEffect from './components/Confetti';
-import { AppState, DailyStats, THEMES, ThemeType } from './types';
+import NotificationToast from './components/NotificationToast';
+import { AppState, DailyStats, THEMES, ThemeType, Achievement } from './types';
 import { DEFAULT_STATE, getTodayISO, MOTIVATIONAL_QUOTES } from './constants';
 
 // --- Local Storage Service ---
@@ -28,12 +29,33 @@ const playClickSound = () => {
   osc.stop(ctx.currentTime + 0.1);
 };
 
+// --- Notification Sound Helper ---
+const playSuccessSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  
+  // High pitched "Ding"
+  osc.frequency.setValueAtTime(1200, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(1800, ctx.currentTime + 0.1);
+  
+  gain.gain.setValueAtTime(0.05, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+  
+  osc.type = 'sine';
+  osc.start();
+  osc.stop(ctx.currentTime + 0.5);
+};
+
 export default function App() {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [activeTab, setActiveTab] = useState<'home' | 'stats' | 'profile' | 'settings'>('home');
   const [showConfetti, setShowConfetti] = useState(false);
   const [animateButton, setAnimateButton] = useState(false);
   const [dailyQuote, setDailyQuote] = useState("");
+  const [notification, setNotification] = useState<Achievement | null>(null);
   const lastTapRef = useRef<number>(0);
 
   // --- Initialization & Daily Logic ---
@@ -58,16 +80,7 @@ export default function App() {
         
         // Update Streak
         let newStreak = loaded.streak;
-        const yesterdayISO = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         
-        // Simple streak logic: if yesterday completed or current date is same (shouldn't happen here), streak continues
-        // If loaded date is yesterday and completed -> streak + 1 (already handled in previous day logic likely, but here we transition)
-        // If GAP > 1 day, reset streak
-        // Simplified: If last active date was yesterday AND goal met, streak preserved. Else reset (unless today).
-        
-        // Actually, simpler logic:
-        // If yesterday was completed, streak matches loaded.streak + 1? No, usually updated daily.
-        // Let's assume streak is current. If yesterday missed, set to 0.
         const prevDate = new Date(loaded.currentDate);
         const currDate = new Date(today);
         const diffTime = Math.abs(currDate.getTime() - prevDate.getTime());
@@ -103,17 +116,21 @@ export default function App() {
 
   // --- Achievement Check ---
   useEffect(() => {
-    let newUnlocks = false;
+    let newlyUnlocked: Achievement | null = null;
+    
     const updatedAchievements = state.achievements.map(ach => {
       if (!ach.unlocked && ach.condition(state)) {
-        newUnlocks = true;
+        newlyUnlocked = ach;
         return { ...ach, unlocked: true };
       }
       return ach;
     });
 
-    if (newUnlocks) {
+    if (newlyUnlocked) {
       setState(prev => ({ ...prev, achievements: updatedAchievements }));
+      setNotification(newlyUnlocked);
+      if (state.settings.soundEnabled) playSuccessSound();
+      if (state.settings.hapticEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
   }, [state.todayCount, state.totalCount, state.streak]);
 
@@ -477,6 +494,16 @@ export default function App() {
            <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-[#4FD3C4] opacity-[0.03] blur-3xl"></div>
            <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#246BFD] opacity-[0.03] blur-3xl"></div>
         </div>
+      )}
+
+      {/* Achievement Notification Overlay */}
+      {notification && (
+        <NotificationToast 
+          title={notification.title}
+          description={notification.description}
+          icon={notification.icon}
+          onClose={() => setNotification(null)}
+        />
       )}
 
       <main className="flex-1 relative z-10 overflow-hidden">
