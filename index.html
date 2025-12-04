@@ -1,60 +1,989 @@
 <!DOCTYPE html>
 <html lang="tr">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Resmigül Sayacı</title>
+    <title>Resmigül Adventure</title>
+    
+    <!-- External Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+    
     <style>
-      body {
-        font-family: 'Outfit', sans-serif;
-        overscroll-behavior: none;
-        -webkit-tap-highlight-color: transparent;
-      }
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(156, 163, 175, 0.5);
-        border-radius: 3px;
-      }
-      
-      /* Animation Utilities */
-      .animate-pulse-custom {
-        animation: pulse-scale 0.15s ease-in-out;
-      }
-      @keyframes pulse-scale {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.07); }
-        100% { transform: scale(1); }
-      }
-      
-      .glass-panel {
-        background: rgba(255, 255, 255, 0.8);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(0, 0, 0, 0.05);
-      }
+        body {
+            font-family: 'Outfit', sans-serif;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        /* Custom Scrollbar */
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Animations */
+        @keyframes pulse-scale {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.07); }
+            100% { transform: scale(1); }
+        }
+        .animate-pulse-custom { animation: pulse-scale 0.15s ease-in-out; }
+
+        @keyframes pop-in {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop { animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+        @keyframes float-up {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-80px) scale(1.5); opacity: 0; }
+        }
+        .float-text { animation: float-up 0.8s ease-out forwards; pointer-events: none; }
+
+        @keyframes slide-in {
+            from { transform: translate(-50%, -100%); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+        .toast-slide-in { animation: slide-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        @keyframes slide-out {
+            from { transform: translate(-50%, 0); opacity: 1; }
+            to { transform: translate(-50%, -100%); opacity: 0; }
+        }
+        .toast-slide-out { animation: slide-out 0.3s ease-in forwards; }
+
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .pt-safe-top { padding-top: env(safe-area-inset-top); }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "canvas-confetti": "https://aistudiocdn.com/canvas-confetti@^1.9.4"
+    "canvas-confetti": "https://aistudiocdn.com/canvas-confetti@^1.9.4",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1"
   }
 }
 </script>
 </head>
-  <body class="bg-white text-[#1A1A1A] overflow-hidden">
-    <div id="root"></div>
-  </body>
+<body id="body-root" class="bg-white text-[#1A1A1A] overflow-hidden h-screen w-full flex flex-col relative transition-colors duration-500">
+
+    <!-- Background Elements -->
+    <div id="bg-layer" class="absolute inset-0 pointer-events-none z-0 overflow-hidden"></div>
+
+    <!-- Float Container -->
+    <div id="float-container" class="absolute inset-0 pointer-events-none z-50 overflow-hidden"></div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-6 left-0 w-full z-[100] pointer-events-none flex flex-col items-center gap-2"></div>
+
+    <!-- Modals -->
+    <div id="modal-container" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-6"></div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="flex-1 relative z-10 overflow-hidden flex flex-col w-full"></main>
+
+    <!-- Navigation -->
+    <nav id="bottom-nav" class="relative z-20 transition-all duration-300 flex justify-around items-center pb-safe pt-2 h-[80px] w-full"></nav>
+
+<script>
+    // --- Constants & Data ---
+    const MOTIVATIONAL_QUOTES = [
+        "Her Resmigül, seni hedefine bir adım daha yaklaştırır.",
+        "Bugünkü Resmigül performansın harika gidiyor.",
+        "Damla damla birikir, koca bir Resmigül denizi olur.",
+        "Başarı, her gün tekrarlanan küçük Resmigül adımlarıdır.",
+        "Kendine inan, Resmigül sayacın seninle.",
+        "Asla pes etme, her dokunuş bir ilerlemedir.",
+        "Sabır en büyük erdemdir, Resmigül ile güçlen.",
+        "Yolun sonu aydınlık, saymaya devam et.",
+        "Disiplin, Resmigül hedefleriyle başarı arasındaki köprüdür.",
+        "Bugün, geleceğin en parlak Resmigül günü."
+    ];
+
+    const THEMES = {
+        crystal: {
+            bg: 'bg-white',
+            text: 'text-[#1A1A1A]',
+            secondaryText: 'text-[#6F6F6F]',
+            primary: 'bg-[#246BFD]',
+            accent: 'text-[#246BFD]',
+            card: 'bg-white border border-[#EDEDED] shadow-[0_3px_12px_rgba(0,0,0,0.06)]',
+            button: 'bg-[#246BFD] text-white shadow-[0_6px_15px_rgba(36,107,253,0.25)]',
+            progressBarFill: 'bg-gradient-to-r from-[#246BFD] to-[#4FD3C4]',
+            nav: 'bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]',
+            navActive: 'text-[#246BFD] bg-[#246BFD]/5',
+            navInactive: 'text-[#C5C5C5]'
+        },
+        dark: {
+            bg: 'bg-slate-900',
+            text: 'text-slate-100',
+            secondaryText: 'text-slate-400',
+            primary: 'bg-blue-600',
+            accent: 'text-blue-400',
+            card: 'bg-slate-800/50 border border-slate-700',
+            button: 'bg-blue-600 shadow-blue-900/50 text-white',
+            progressBarFill: 'bg-blue-500',
+            nav: 'bg-slate-900 border-t border-slate-800',
+            navActive: 'text-blue-400 bg-blue-500/10',
+            navInactive: 'text-slate-600'
+        },
+        neon: {
+            bg: 'bg-black',
+            text: 'text-pink-50',
+            secondaryText: 'text-pink-200/50',
+            primary: 'bg-fuchsia-600',
+            accent: 'text-cyan-400',
+            card: 'bg-gray-900/80 border border-fuchsia-500/30',
+            button: 'bg-gradient-to-r from-fuchsia-600 to-purple-600 shadow-[0_0_20px_rgba(192,38,211,0.6)] text-white',
+            progressBarFill: 'bg-gradient-to-r from-fuchsia-500 to-cyan-500',
+            nav: 'bg-black border-t border-fuchsia-900',
+            navActive: 'text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.3)]',
+            navInactive: 'text-fuchsia-900'
+        }
+    };
+
+    const SHOP_ITEMS = [
+        { id: 'boost_2x_15s', type:'multiplier', name: '2x Hızlandırıcı', description: '15 saniye boyunca her dokunuş 2 sayılır.', price: 50, value: 2, duration: 15, icon: 'zap' },
+        { id: 'boost_3x_30s', type:'multiplier', name: '3x Süper Güç', description: '30 saniye boyunca her dokunuş 3 sayılır.', price: 150, value: 3, duration: 30, icon: 'rocket' },
+        { id: 'boost_5x_60s', type:'multiplier', name: '5x Mega Güç', description: '1 dakika boyunca her dokunuş 5 sayılır.', price: 400, value: 5, duration: 60, icon: 'gem' },
+        { id: 'auto_1_20s', type:'autotap', name: 'Otomatik Zikir', description: '20 saniye boyunca her saniye +1 ekler.', price: 100, value: 1, duration: 20, icon: 'bot' }
+    ];
+
+    const INITIAL_ACHIEVEMENTS = [
+        { id: 'first_step', title: 'Resmigül Başlangıcı', description: 'İlk günlük hedefini tamamla.', icon: 'sprout', unlocked: false, condition: (s) => s.history.some(d => d.completed) },
+        { id: 'streak_3', title: 'Resmigül Serisi', description: '3 gün üst üste hedefe ulaş.', icon: 'flame', unlocked: false, condition: (s) => s.streak >= 3 },
+        { id: 'streak_7', title: 'Efsane Resmigül Haftası', description: '7 günlük seri yap.', icon: 'crown', unlocked: false, condition: (s) => s.streak >= 7 },
+        { id: 'total_1000', title: '1000’lik Resmigülcü', description: 'Toplam 1000 Resmigül sayısına ulaş.', icon: 'gem', unlocked: false, condition: (s) => s.totalCount >= 1000 },
+        { id: 'level_5', title: 'Yükselen Yıldız', description: '5. Seviyeye ulaş.', icon: 'star', unlocked: false, condition: (s) => s.user.level >= 5 }
+    ];
+
+    const DAILY_QUESTS = [
+        { id: 'tap_200', description: 'Bugün 200 kez dokun', target: 200, current: 0, reward: 50, completed: false, type: 'tap_count' },
+        { id: 'buy_1', description: 'Mağazadan 1 ürün al', target: 1, current: 0, reward: 30, completed: false, type: 'buy_item' }
+    ];
+
+    // --- State Management ---
+    const STORAGE_KEY = 'resmigul_crystal_v4_vanilla';
+    const getTodayISO = () => new Date().toISOString().split('T')[0];
+
+    let state = {
+        currentDate: getTodayISO(),
+        todayCount: 0,
+        history: [],
+        streak: 0,
+        totalCount: 0,
+        balance: 0,
+        user: { name: 'Misafir', avatar: '✨', startDate: getTodayISO(), level: 1, xp: 0, maxXp: 100 },
+        settings: { soundEnabled: true, hapticEnabled: true, theme: 'crystal', customGoal: null, funMode: false },
+        achievements: JSON.parse(JSON.stringify(INITIAL_ACHIEVEMENTS)),
+        activeEffects: [],
+        quests: JSON.parse(JSON.stringify(DAILY_QUESTS)),
+        lastDailyReward: null,
+        dailyRewardStreak: 0
+    };
+
+    // Re-attach condition functions to achievements since JSON stringify loses them
+    function hydrateAchievements() {
+        state.achievements.forEach(ach => {
+            const original = INITIAL_ACHIEVEMENTS.find(i => i.id === ach.id);
+            if (original) ach.condition = original.condition;
+        });
+    }
+
+    let activeTab = 'home';
+    let dailyQuote = "";
+
+    // --- Audio System ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playSound(freq = 800, type = 'sine', duration = 0.1) {
+        if (!state.settings.soundEnabled) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq / 2, audioCtx.currentTime + duration - 0.02);
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function playSuccessSound() {
+        if (!state.settings.soundEnabled) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.setValueAtTime(1200, now);
+        osc.frequency.exponentialRampToValueAtTime(1800, now + 0.1);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.start();
+        osc.stop(now + 0.5);
+    }
+
+    // --- Persistence & Initialization ---
+    function loadState() {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        const today = getTodayISO();
+
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            
+            // Migrations and Default Checks
+            if (!parsed.quests) parsed.quests = JSON.parse(JSON.stringify(DAILY_QUESTS));
+            if (!parsed.activeEffects) parsed.activeEffects = [];
+            if (parsed.balance === undefined) parsed.balance = 0;
+            if (!parsed.achievements) parsed.achievements = JSON.parse(JSON.stringify(INITIAL_ACHIEVEMENTS));
+            
+            state = { ...state, ...parsed };
+            hydrateAchievements();
+
+            // Day Change Logic
+            if (state.currentDate !== today) {
+                const goal = getGoal(state);
+                const yesterdayStats = {
+                    date: state.currentDate,
+                    count: state.todayCount,
+                    goal: goal,
+                    completed: state.todayCount >= goal
+                };
+
+                let newStreak = state.streak;
+                const prevDate = new Date(state.currentDate);
+                const currDate = new Date(today);
+                const diffDays = Math.ceil(Math.abs(currDate - prevDate) / (1000 * 60 * 60 * 24));
+
+                if (diffDays === 1 && yesterdayStats.completed) {
+                    newStreak += 1;
+                } else if (diffDays > 1 || (diffDays === 1 && !yesterdayStats.completed)) {
+                    newStreak = 0;
+                }
+
+                state.currentDate = today;
+                state.todayCount = 0;
+                state.history.push(yesterdayStats);
+                state.streak = newStreak;
+                state.quests = JSON.parse(JSON.stringify(DAILY_QUESTS));
+                
+                showDailyRewardModal();
+            } else {
+                if (state.lastDailyReward !== today) {
+                    showDailyRewardModal();
+                }
+            }
+        } else {
+            hydrateAchievements();
+            showDailyRewardModal();
+        }
+
+        // Daily Quote
+        const quoteIndex = today.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % MOTIVATIONAL_QUOTES.length;
+        dailyQuote = MOTIVATIONAL_QUOTES[quoteIndex];
+
+        saveState();
+        applyTheme();
+    }
+
+    function saveState() {
+        // Strip functions before saving
+        const toSave = JSON.parse(JSON.stringify(state));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    }
+
+    function getGoal(s = state) {
+        if (s.settings.customGoal) return s.settings.customGoal;
+        const start = new Date(s.user.startDate).getTime();
+        const now = new Date(s.currentDate).getTime();
+        const diffDays = Math.floor((now - start) / (1000 * 3600 * 24));
+        return 50 + (diffDays * 50);
+    }
+
+    function getTheme() {
+        return THEMES[state.settings.theme];
+    }
+
+    function applyTheme() {
+        const theme = getTheme();
+        const body = document.getElementById('body-root');
+        body.className = `${theme.bg} ${theme.text} overflow-hidden h-screen w-full flex flex-col relative transition-colors duration-500`;
+        
+        // Background effects
+        const bgLayer = document.getElementById('bg-layer');
+        if (state.settings.theme === 'crystal') {
+            bgLayer.innerHTML = `
+                <div class="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-[#4FD3C4] opacity-[0.03] blur-3xl"></div>
+                <div class="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#246BFD] opacity-[0.03] blur-3xl"></div>
+            `;
+        } else {
+            bgLayer.innerHTML = '';
+        }
+        
+        renderNav();
+        renderMainContent();
+    }
+
+    // --- Core Logic ---
+    function handleTap(e) {
+        const now = Date.now();
+        if (e && e.timeStamp && now - lastTapTime < 60) return; // Anti-spam
+        lastTapTime = now;
+
+        playSound(800 + (Math.random() * 200));
+        if (state.settings.hapticEnabled && navigator.vibrate) navigator.vibrate(10);
+
+        // Multiplier & Crit
+        const multiplierEffect = state.activeEffects.find(eff => eff.id.includes('boost'));
+        let val = multiplierEffect ? multiplierEffect.value : 1;
+        let isCrit = false;
+
+        if (Math.random() < 0.05) {
+            val *= 2;
+            isCrit = true;
+            playSound(1200);
+            if (navigator.vibrate) navigator.vibrate([20, 20, 20]);
+        }
+
+        // Fun Mode Random Bonus
+        if (state.settings.funMode && Math.random() < 0.08) {
+            val += (Math.random() < 0.5 ? 3 : 5);
+            isCrit = true; // reusing crit visual
+        }
+
+        // Floating Text
+        if (e) {
+            const rect = e.target.getBoundingClientRect();
+            const x = e.clientX || (rect.left + rect.width / 2);
+            const y = e.clientY || (rect.top + rect.height / 2);
+            createFloatingText(x, y, isCrit ? `KRİTİK! +${val}` : `+${val}`);
+        }
+
+        updateProgress(val);
+        
+        // Button Animation
+        const btn = document.getElementById('tap-button');
+        if(btn) {
+            btn.classList.remove('scale-100');
+            btn.classList.add('scale-[1.07]');
+            setTimeout(() => {
+                btn.classList.remove('scale-[1.07]');
+                btn.classList.add('scale-100');
+            }, 100);
+        }
+    }
+
+    let lastTapTime = 0;
+
+    function updateProgress(amount) {
+        const currentGoal = getGoal();
+        const prevCount = state.todayCount;
+        
+        state.todayCount += amount;
+        state.totalCount += amount;
+        state.balance += amount;
+        
+        // XP & Level
+        state.user.xp += amount;
+        if (state.user.xp >= state.user.maxXp) {
+            state.user.level++;
+            state.user.xp -= state.user.maxXp;
+            state.user.maxXp = Math.floor(state.user.maxXp * 1.5);
+            showToast("SEVİYE ATLADIN!", `${state.user.level}. Seviyeye ulaştın!`, 'star');
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            playSuccessSound();
+        }
+
+        // Goal Completion
+        if (state.todayCount >= currentGoal && prevCount < currentGoal) {
+            confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
+            playSuccessSound();
+        }
+
+        // Quests
+        let questUpdated = false;
+        state.quests.forEach(q => {
+            if (q.type === 'tap_count' && !q.completed) {
+                q.current += amount;
+                if (q.current >= q.target) {
+                    q.completed = true;
+                    state.balance += q.reward;
+                    showToast("GÖREV TAMAMLANDI", q.description, 'check-circle');
+                }
+                questUpdated = true;
+            }
+        });
+
+        checkAchievements();
+        saveState();
+        
+        // Optimized UI Update
+        if (activeTab === 'home') updateHomeUI();
+        if (activeTab === 'market' && questUpdated) renderMainContent(); // Update quests
+        if (activeTab === 'profile') renderMainContent(); // Update XP bar
+    }
+
+    function checkAchievements() {
+        let saved = false;
+        state.achievements.forEach(ach => {
+            if (!ach.unlocked && ach.condition(state)) {
+                ach.unlocked = true;
+                showToast(ach.title, ach.description, ach.icon);
+                playSuccessSound();
+                saved = true;
+            }
+        });
+        if (saved) saveState();
+    }
+
+    // Explicitly expose functions to window scope for onclick handlers
+    window.buyItem = function(itemId) {
+        const item = SHOP_ITEMS.find(i => i.id === itemId);
+        if (!item) return;
+
+        if (state.balance < item.price) {
+            alert("Yetersiz Resmigül Puanı!");
+            return;
+        }
+
+        state.balance -= item.price;
+        
+        if (item.duration) {
+            state.activeEffects.push({
+                id: item.id + '_' + Date.now(),
+                value: item.value,
+                expiresAt: Date.now() + (item.duration * 1000)
+            });
+        }
+        
+        if (item.type === 'autotap') {
+             state.activeEffects.push({
+                id: item.id + '_auto_' + Date.now(),
+                value: item.value,
+                expiresAt: Date.now() + (item.duration * 1000)
+            });
+        }
+
+        // Quest: Buy Item
+        state.quests.forEach(q => {
+            if (q.type === 'buy_item' && !q.completed) {
+                q.current++;
+                if (q.current >= q.target) {
+                    q.completed = true;
+                    state.balance += q.reward; // Bonus for quest
+                    showToast("GÖREV TAMAMLANDI", q.description, 'check-circle');
+                }
+            }
+        });
+
+        showToast("SATIN ALIM BAŞARILI", `${item.name} aktif edildi!`, 'shopping-bag');
+        playSuccessSound();
+        saveState();
+        renderMainContent(); // Refresh shop UI
+    }
+
+    window.claimDailyReward = function() {
+        const reward = 50 + (state.dailyRewardStreak * 10);
+        state.balance += reward;
+        state.lastDailyReward = getTodayISO();
+        state.dailyRewardStreak++;
+        saveState();
+        
+        document.getElementById('modal-container').classList.add('hidden');
+        showToast("GÜNLÜK ÖDÜL", `${reward} RP Kazanıldı!`, 'gift');
+        confetti({ particleCount: 100, spread: 60, origin: { y: 0.7 } });
+        renderMainContent();
+    }
+
+    window.switchTab = function(tabId) {
+        activeTab = tabId;
+        renderNav();
+        renderMainContent();
+    }
+    
+    window.setTheme = function(t) {
+        state.settings.theme = t;
+        saveState();
+        applyTheme();
+    }
+
+    window.toggleSetting = function(key) {
+        state.settings[key] = !state.settings[key];
+        saveState();
+        renderMainContent();
+    }
+
+    window.exportData = function() {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+        const anchor = document.createElement('a');
+        anchor.setAttribute("href", dataStr);
+        anchor.setAttribute("download", "resmigul_backup.json");
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+    }
+    
+    window.updateName = function(name) {
+        state.user.name = name;
+        saveState();
+    }
+
+    // --- Render Functions ---
+    
+    function renderNav() {
+        const theme = getTheme();
+        const nav = document.getElementById('bottom-nav');
+        nav.className = `relative z-20 ${theme.nav} flex justify-around items-center pb-safe pt-2 h-[80px] w-full transition-colors duration-300`;
+        
+        const tabs = [
+            { id: 'home', icon: 'home', label: 'Resmigül' },
+            { id: 'market', icon: 'shopping-bag', label: 'Mağaza' },
+            { id: 'stats', icon: 'bar-chart-2', label: 'Analiz' },
+            { id: 'profile', icon: 'user', label: 'Profil' },
+            { id: 'settings', icon: 'settings', label: 'Ayarlar' }
+        ];
+
+        nav.innerHTML = tabs.map(t => {
+            const isActive = activeTab === t.id;
+            const activeClass = isActive ? theme.navActive : theme.navInactive;
+            return `
+                <button onclick="switchTab('${t.id}')" class="flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300 ${activeClass}">
+                    <i data-lucide="${t.icon}" class="${isActive ? 'stroke-current' : 'stroke-current opacity-60'}" width="22" height="22"></i>
+                    ${isActive ? `<span class="text-[9px] font-bold mt-1">${t.label}</span>` : ''}
+                </button>
+            `;
+        }).join('');
+        lucide.createIcons();
+    }
+
+    function renderMainContent() {
+        const main = document.getElementById('main-content');
+        main.innerHTML = '';
+        
+        if (activeTab === 'home') renderHome(main);
+        else if (activeTab === 'market') renderMarket(main);
+        else if (activeTab === 'stats') renderStats(main);
+        else if (activeTab === 'profile') renderProfile(main);
+        else if (activeTab === 'settings') renderSettings(main);
+
+        lucide.createIcons();
+    }
+
+    function renderHome(container) {
+        const theme = getTheme();
+        const goal = getGoal();
+        const progress = Math.min(100, (state.todayCount / goal) * 100);
+        const remaining = Math.max(0, goal - state.todayCount);
+        
+        // Effects
+        const activeBoost = state.activeEffects.find(e => e.id.includes('boost'));
+        const timeLeft = activeBoost ? Math.ceil((activeBoost.expiresAt - Date.now())/1000) : 0;
+        const multiplier = activeBoost ? activeBoost.value : 1;
+
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-between h-full pt-6 pb-24 px-6 relative w-full">
+                <!-- Header -->
+                <div class="w-full flex flex-col gap-3">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <div class="w-10 h-10 rounded-full ${theme.primary} flex items-center justify-center text-white font-bold shadow-lg text-sm">
+                                ${state.user.level}
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-bold ${theme.secondaryText}">SEVİYE</span>
+                                <div class="w-24 h-2 bg-[#EDEDED] rounded-full overflow-hidden mt-1">
+                                    <div class="h-full bg-[#F8D548] transition-all duration-500" style="width: ${(state.user.xp / state.user.maxXp) * 100}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-4 py-2 rounded-full ${theme.card} flex items-center gap-2 border-[#F8D548]/30 border">
+                            <i data-lucide="star" class="text-[#F8D548] fill-[#F8D548]" width="16"></i>
+                            <span class="text-sm font-bold ${theme.text}">${state.balance} RP</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Multiplier Tag -->
+                <div id="multiplier-tag" class="${timeLeft > 0 ? 'flex' : 'hidden'} absolute top-24 z-20 animate-pulse bg-[#F8D548] text-[#1A1A1A] px-4 py-1 rounded-full font-bold text-sm shadow-lg items-center gap-2">
+                    <i data-lucide="zap" width="14" class="fill-current"></i>
+                    <span id="multiplier-text">${multiplier}x KATLAYICI (${timeLeft}s)</span>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="w-full grid grid-cols-2 gap-4 mt-2">
+                    <div class="p-4 rounded-[18px] ${theme.card} flex flex-col">
+                        <span class="text-[10px] font-bold uppercase tracking-wider ${theme.secondaryText}">GÜNLÜK HEDEF</span>
+                        <span class="text-2xl font-bold mt-1 ${theme.text}">${goal}</span>
+                        <div class="w-full h-1.5 mt-2 rounded-full bg-[#EDEDED] overflow-hidden">
+                            <div id="progress-fill" class="h-full ${theme.progressBarFill} transition-all duration-200" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                    <div class="p-4 rounded-[18px] ${theme.card} flex flex-col">
+                        <span class="text-[10px] font-bold uppercase tracking-wider ${theme.secondaryText}">KALAN RESMİGÜL</span>
+                        <span id="remaining-text" class="text-2xl font-bold mt-1 ${remaining === 0 ? 'text-[#2ECC71]' : theme.text}">
+                            ${remaining === 0 ? 'TAMAM!' : remaining}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Main Button -->
+                <div class="flex-1 flex flex-col items-center justify-center relative w-full">
+                    <div class="absolute w-64 h-64 rounded-full ${theme.primary} opacity-5 ${timeLeft > 0 ? 'animate-ping' : ''}"></div>
+                    <button id="tap-button" class="w-64 h-64 rounded-full flex flex-col items-center justify-center ${theme.button} transition-all duration-100 outline-none select-none z-10 scale-100 active:scale-95 ${timeLeft > 0 ? 'ring-4 ring-[#F8D548] ring-offset-4 ring-offset-white' : ''}" style="-webkit-tap-highlight-color: transparent;">
+                        <span id="counter-value" class="text-7xl font-bold text-white tracking-tighter drop-shadow-sm pointer-events-none">${state.todayCount}</span>
+                        <span class="text-white/80 font-medium text-sm mt-2 tracking-widest uppercase opacity-70 pointer-events-none">RESMİGÜL</span>
+                    </button>
+                    <p class="mt-8 text-center text-sm italic font-medium max-w-[80%] ${theme.secondaryText}">"${dailyQuote}"</p>
+                </div>
+            </div>
+        `;
+
+        // Bind click event directly for better response
+        const btn = document.getElementById('tap-button');
+        btn.addEventListener('mousedown', handleTap);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); handleTap(e.touches[0]); }, { passive: false });
+    }
+
+    function updateHomeUI() {
+        const goal = getGoal();
+        const progress = Math.min(100, (state.todayCount / goal) * 100);
+        const remaining = Math.max(0, goal - state.todayCount);
+        
+        const counterEl = document.getElementById('counter-value');
+        const progressEl = document.getElementById('progress-fill');
+        const remainingEl = document.getElementById('remaining-text');
+        
+        if (counterEl) counterEl.innerText = state.todayCount;
+        if (progressEl) progressEl.style.width = `${progress}%`;
+        if (remainingEl) {
+            remainingEl.innerText = remaining === 0 ? 'TAMAM!' : remaining;
+            if (remaining === 0) remainingEl.className = "text-2xl font-bold mt-1 text-[#2ECC71]";
+        }
+    }
+
+    function renderMarket(container) {
+        const theme = getTheme();
+        container.innerHTML = `
+            <div class="flex flex-col h-full px-6 pt-8 pb-24 overflow-y-auto space-y-6 w-full">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold ${theme.text}">Resmigül Mağazası</h2>
+                    <div class="px-4 py-2 rounded-full bg-[#F8D548]/20 flex items-center gap-2">
+                        <i data-lucide="star" class="text-[#F8D548] fill-[#F8D548]" width="16"></i>
+                        <span class="text-sm font-bold ${theme.text}">${state.balance} RP</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    ${SHOP_ITEMS.map(item => `
+                        <div class="p-4 rounded-[18px] ${theme.card} flex flex-col justify-between relative overflow-hidden group">
+                             <div class="absolute top-0 right-0 p-2 opacity-10 scale-150 group-hover:scale-125 transition-transform">
+                                <i data-lucide="${item.icon}" width="48" height="48"></i>
+                             </div>
+                             <div>
+                               <div class="mb-2"><i data-lucide="${item.icon}" width="32" height="32" class="${theme.text}"></i></div>
+                               <h3 class="text-sm font-bold ${theme.text}">${item.name}</h3>
+                               <p class="text-[10px] ${theme.secondaryText} mt-1 leading-tight">${item.description}</p>
+                             </div>
+                             <button onclick="buyItem('${item.id}')" ${state.balance < item.price ? 'disabled' : ''} class="mt-4 w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${state.balance >= item.price ? 'bg-[#246BFD] text-white hover:bg-[#1a54d6]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                               <i data-lucide="star" width="10" class="fill-current"></i> ${item.price} AL
+                             </button>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="p-6 rounded-[18px] ${theme.card} mt-4">
+                     <h3 class="text-xs font-bold uppercase mb-4 ${theme.secondaryText} flex items-center gap-2">
+                       <i data-lucide="clock" width="14"></i> GÜNLÜK GÖREVLER
+                     </h3>
+                     <div class="space-y-4">
+                       ${state.quests.map(q => `
+                         <div class="flex flex-col">
+                           <div class="flex justify-between text-xs font-bold mb-1">
+                             <span class="${theme.text}">${q.description}</span>
+                             <span class="${q.completed ? 'text-[#2ECC71]' : theme.secondaryText}">${q.current}/${q.target}</span>
+                           </div>
+                           <div class="w-full h-2 bg-[#EDEDED] rounded-full overflow-hidden">
+                             <div class="h-full ${q.completed ? 'bg-[#2ECC71]' : 'bg-[#246BFD]'}" style="width: ${Math.min(100, (q.current / q.target) * 100)}%"></div>
+                           </div>
+                         </div>
+                       `).join('')}
+                     </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderStats(container) {
+        const theme = getTheme();
+        
+        // Simple Chart Logic
+        const last7Days = state.history.slice(-7);
+        const chartData = Array(7).fill(0).map((_, i) => {
+            if (i < last7Days.length) return last7Days[i];
+            return { date: '-', count: 0, goal: 50 };
+        });
+        
+        // Ensure we display 7 items
+        const displayData = chartData.length < 7 
+            ? [...Array(7 - chartData.length).fill({ date: '-', count: 0 }), ...chartData] 
+            : chartData;
+
+        const maxVal = Math.max(100, ...displayData.map(d => d.count));
+        const bestDay = state.history.reduce((max, curr) => Math.max(max, curr.count), 0);
+
+        container.innerHTML = `
+            <div class="flex flex-col h-full px-6 pt-8 pb-24 overflow-y-auto space-y-6 w-full">
+                <h2 class="text-2xl font-bold ${theme.text}">Resmigül Analiz</h2>
+
+                <div class="h-64 p-4 rounded-[18px] ${theme.card} flex flex-col">
+                    <h3 class="text-xs font-bold uppercase mb-4 ${theme.secondaryText}">HAFTALIK PERFORMANS</h3>
+                    <div class="flex-1 flex items-end justify-between gap-2 pb-2">
+                        ${displayData.map(d => `
+                            <div class="flex flex-col items-center flex-1 h-full justify-end group gap-1">
+                                <div class="w-full rounded-t-md ${d.count >= d.goal ? 'bg-[#246BFD]' : 'bg-[#4FD3C4]'} transition-all hover:opacity-80 relative" style="height: ${Math.max(5, (d.count / maxVal) * 100)}%">
+                                    <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">${d.count}</div>
+                                </div>
+                                <span class="text-[9px] ${theme.secondaryText} font-bold">${d.date.slice(5) || '-'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-5 rounded-[18px] ${theme.card}">
+                        <div class="text-[#F8D548] mb-2"><i data-lucide="trophy" width="20"></i></div>
+                        <div class="text-2xl font-bold ${theme.text}">${bestDay}</div>
+                        <div class="text-[10px] font-bold uppercase ${theme.secondaryText}">REKOR GÜN</div>
+                    </div>
+                    <div class="p-5 rounded-[18px] ${theme.card}">
+                        <div class="text-[#246BFD] mb-2"><i data-lucide="zap" width="20"></i></div>
+                        <div class="text-2xl font-bold ${theme.text}">${state.streak}</div>
+                        <div class="text-[10px] font-bold uppercase ${theme.secondaryText}">GÜNCEL SERİ</div>
+                    </div>
+                </div>
+                
+                <div class="space-y-3">
+                  <h3 class="text-xs font-bold uppercase ${theme.secondaryText}">GEÇMİŞ KAYITLAR</h3>
+                  ${state.history.length === 0 ? `<p class="text-center opacity-40 text-sm">Veri bulunamadı.</p>` : 
+                    state.history.slice().reverse().map(day => `
+                        <div class="flex justify-between items-center p-4 rounded-[18px] ${theme.card}">
+                          <div class="flex items-center gap-4">
+                            <div class="w-2.5 h-2.5 rounded-full ${day.completed ? 'bg-[#2ECC71]' : 'bg-[#F8D548]'}"></div>
+                            <div>
+                              <p class="text-sm font-bold ${theme.text}">${day.date}</p>
+                              <p class="text-[10px] ${theme.secondaryText}">Hedef: ${day.goal}</p>
+                            </div>
+                          </div>
+                          <span class="font-mono font-bold text-lg ${theme.accent}">${day.count}</span>
+                        </div>
+                    `).join('')
+                  }
+                </div>
+            </div>
+        `;
+    }
+
+    function renderProfile(container) {
+        const theme = getTheme();
+        const iconMap = { 'sprout': 'sprout', 'flame': 'flame', 'crown': 'crown', 'gem': 'gem', 'star': 'star' };
+
+        container.innerHTML = `
+            <div class="flex flex-col h-full px-6 pt-8 pb-24 overflow-y-auto space-y-6 w-full">
+                <div class="flex flex-col items-center text-center mb-4">
+                    <div class="relative w-24 h-24 rounded-full ${theme.card} border-4 border-[#246BFD]/10 flex items-center justify-center text-5xl shadow-lg mb-4">
+                        ${state.user.avatar}
+                        <div class="absolute -bottom-2 bg-[#246BFD] text-white text-xs px-2 py-1 rounded-full font-bold">Lvl ${state.user.level}</div>
+                    </div>
+                    <h2 class="text-2xl font-bold ${theme.text}">${state.user.name}</h2>
+                    <div class="w-full max-w-[200px] mt-2">
+                        <div class="flex justify-between text-[10px] font-bold opacity-60 mb-1">
+                            <span>TP</span>
+                            <span>${state.user.xp}/${state.user.maxXp}</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-[#EDEDED] rounded-full overflow-hidden">
+                            <div class="h-full bg-[#246BFD]" style="width: ${(state.user.xp / state.user.maxXp) * 100}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6 rounded-[18px] ${theme.card}">
+                    <h3 class="text-xs font-bold uppercase mb-4 ${theme.secondaryText} flex items-center gap-2">
+                        <i data-lucide="trophy" width="14"></i> BAŞARIMLAR
+                    </h3>
+                    <div class="grid grid-cols-4 gap-4">
+                        ${state.achievements.map(ach => `
+                            <div onclick="if(${ach.unlocked}) alert('${ach.description}')" class="aspect-square rounded-2xl flex flex-col items-center justify-center p-2 text-center transition-all ${ach.unlocked ? 'bg-[#F8D548]/10 text-[#1A1A1A]' : 'bg-gray-100 grayscale opacity-40'}">
+                                <i data-lucide="${iconMap[ach.icon] || 'star'}" width="24"></i>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="p-4 rounded-[18px] ${theme.card}">
+                        <label class="text-[10px] font-bold uppercase ${theme.secondaryText} block mb-2">KULLANICI ADI</label>
+                        <input type="text" value="${state.user.name}" onchange="updateName(this.value)" class="w-full bg-transparent border-b border-[#EDEDED] py-2 text-lg font-bold ${theme.text} outline-none focus:border-[#246BFD] transition-colors" />
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderSettings(container) {
+        const theme = getTheme();
+        container.innerHTML = `
+            <div class="flex flex-col h-full px-6 pt-8 pb-24 overflow-y-auto space-y-6 w-full">
+                <h2 class="text-2xl font-bold ${theme.text}">Ayarlar</h2>
+                
+                <div class="p-6 rounded-[18px] ${theme.card}">
+                    <h3 class="text-xs font-bold uppercase mb-4 ${theme.secondaryText} flex items-center gap-2"><i data-lucide="palette" width="14"></i> GÖRÜNÜM</h3>
+                    <div class="flex gap-2">
+                        ${['crystal', 'dark', 'neon'].map(t => `
+                            <button onclick="setTheme('${t}')" class="flex-1 py-3 rounded-xl text-xs font-bold capitalize transition-all border ${state.settings.theme === t ? 'border-[#246BFD] bg-[#246BFD]/5 text-[#246BFD]' : 'border-transparent bg-gray-50 text-gray-400'}">
+                                ${t === 'crystal' ? 'Kristal' : t}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+                
+                <div class="p-6 rounded-[18px] ${theme.card} space-y-5">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3"><i data-lucide="volume-2" width="18" class="${theme.secondaryText}"></i> <span class="text-sm font-medium ${theme.text}">Resmigül Sesi</span></div>
+                        <button onclick="toggleSetting('soundEnabled')" class="text-xs font-bold ${state.settings.soundEnabled ? 'text-[#2ECC71]' : 'text-[#C5C5C5]'}">${state.settings.soundEnabled ? 'AÇIK' : 'KAPALI'}</button>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3"><i data-lucide="vibrate" width="18" class="${theme.secondaryText}"></i> <span class="text-sm font-medium ${theme.text}">Titreşim</span></div>
+                        <button onclick="toggleSetting('hapticEnabled')" class="text-xs font-bold ${state.settings.hapticEnabled ? 'text-[#2ECC71]' : 'text-[#C5C5C5]'}">${state.settings.hapticEnabled ? 'AÇIK' : 'KAPALI'}</button>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3"><i data-lucide="zap" width="18" class="${theme.secondaryText}"></i> <span class="text-sm font-medium ${theme.text}">Eğlence Modu</span></div>
+                        <button onclick="toggleSetting('funMode')" class="text-xs font-bold ${state.settings.funMode ? 'text-[#2ECC71]' : 'text-[#C5C5C5]'}">${state.settings.funMode ? 'AÇIK' : 'KAPALI'}</button>
+                    </div>
+                </div>
+
+                <div class="p-6 rounded-[18px] ${theme.card}">
+                    <h3 class="text-xs font-bold uppercase mb-4 ${theme.secondaryText} flex items-center gap-2"><i data-lucide="download" width="14"></i> YEDEKLEME</h3>
+                    <div class="flex gap-3">
+                         <button onclick="exportData()" class="flex-1 bg-[#246BFD]/5 py-3 rounded-xl flex items-center justify-center text-xs font-bold text-[#246BFD]">YEDEKLE</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- UI Helpers ---
+    function createFloatingText(x, y, text) {
+        const el = document.createElement('div');
+        el.className = 'fixed pointer-events-none text-2xl font-black text-[#F8D548] float-text z-50';
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        el.style.textShadow = '0 2px 4px rgba(0,0,0,0.2)';
+        el.innerText = text;
+        document.getElementById('float-container').appendChild(el);
+        setTimeout(() => el.remove(), 800);
+    }
+
+    function showToast(title, desc, iconName) {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        el.className = "bg-white rounded-[18px] p-4 shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] flex items-center gap-4 relative overflow-hidden w-[90%] max-w-sm toast-slide-in";
+        el.innerHTML = `
+            <div class="absolute top-0 left-0 w-1 h-full bg-[#2ECC71]"></div>
+            <div class="w-12 h-12 rounded-full bg-[#2ECC71]/10 flex items-center justify-center text-[#2ECC71]">
+                <i data-lucide="${iconName}" width="24"></i>
+            </div>
+            <div class="flex-1">
+                <h4 class="text-[#2ECC71] text-xs font-bold uppercase tracking-wider mb-0.5">BAŞARIM!</h4>
+                <p class="text-[#1A1A1A] font-bold text-sm">${title}</p>
+                <p class="text-[#6F6F6F] text-xs">${desc}</p>
+            </div>
+        `;
+        container.appendChild(el);
+        lucide.createIcons();
+        setTimeout(() => {
+            el.classList.remove('toast-slide-in');
+            el.classList.add('toast-slide-out');
+            setTimeout(() => el.remove(), 300);
+        }, 4000);
+    }
+
+    function showDailyRewardModal() {
+        const modal = document.getElementById('modal-container');
+        modal.classList.remove('hidden');
+        const streak = state.dailyRewardStreak;
+        const reward = 50 + (streak * 10);
+        
+        modal.innerHTML = `
+            <div class="bg-white rounded-[24px] w-full max-w-sm p-6 flex flex-col items-center text-center animate-pop">
+                <div class="w-16 h-16 rounded-full bg-[#F8D548]/20 flex items-center justify-center text-4xl mb-4">🎁</div>
+                <h2 class="text-xl font-bold text-[#1A1A1A] mb-1">GÜNLÜK ÖDÜL</h2>
+                <p class="text-sm text-[#6F6F6F] mb-4">${streak + 1}. gün serindesin!</p>
+                <div class="flex gap-2 mb-6">
+                    ${[0,1,2].map(i => `
+                        <div class="w-12 h-12 rounded-xl flex items-center justify-center border-2 ${i < (streak % 3) + 1 ? 'border-[#F8D548] bg-[#F8D548]/10' : 'border-gray-100'}">
+                            ${i < (streak % 3) + 1 ? '✨' : '🔒'}
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="text-3xl font-black text-[#246BFD] mb-6">+${reward} RP</div>
+                <button onclick="claimDailyReward()" class="w-full py-3 rounded-xl bg-[#246BFD] text-white font-bold shadow-lg shadow-blue-500/30 active:scale-95 transition-transform">ÖDÜLÜ AL</button>
+            </div>
+        `;
+    }
+
+    // --- Game Loop ---
+    setInterval(() => {
+        const now = Date.now();
+        // Expire effects
+        state.activeEffects = state.activeEffects.filter(e => e.expiresAt > now);
+        
+        // Auto Tap
+        const autoTap = state.activeEffects.find(e => e.id.includes('auto'));
+        let updated = false;
+
+        if (autoTap) {
+            updateProgress(autoTap.value);
+            updated = true;
+        }
+
+        // Timer Updates
+        const activeBoost = state.activeEffects.find(e => e.id.includes('boost'));
+        if (activeTab === 'home') {
+            const multiplierTag = document.getElementById('multiplier-tag');
+            if (activeBoost) {
+                const timeLeft = Math.ceil((activeBoost.expiresAt - now)/1000);
+                if (multiplierTag) {
+                    multiplierTag.classList.remove('hidden');
+                    multiplierTag.classList.add('flex');
+                    document.getElementById('multiplier-text').innerText = `${activeBoost.value}x KATLAYICI (${timeLeft}s)`;
+                    // Add Ring effect logic to button if needed
+                    const btn = document.getElementById('tap-button');
+                    if (btn) btn.classList.add('ring-4', 'ring-[#F8D548]', 'ring-offset-4', 'ring-offset-white');
+                }
+            } else {
+                if (multiplierTag) multiplierTag.classList.add('hidden');
+                const btn = document.getElementById('tap-button');
+                if (btn) btn.classList.remove('ring-4', 'ring-[#F8D548]', 'ring-offset-4', 'ring-offset-white');
+            }
+        }
+        
+        if (updated) saveState();
+    }, 1000);
+
+    // --- Init ---
+    loadState();
+
+</script>
+</body>
 </html>
